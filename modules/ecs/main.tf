@@ -1,41 +1,57 @@
 # ECS Cluster
-resource "aws_ecs_cluster" "this" {
+resource "aws_ecs_cluster" "cluster" {
   name = var.cluster_name
   tags = var.tags
 }
 
 # ECS Task Definition
-resource "aws_ecs_task_definition" "this" {
+resource "aws_ecs_task_definition" "task_definition" {
   family                   = var.task_family
-  container_definitions    = jsonencode(var.container_definitions)
-  cpu                      = var.task_cpu
-  memory                   = var.task_memory
-  network_mode             = var.network_mode
-  requires_compatibilities = var.requires_compatibilities
-  execution_role_arn       = var.execution_role_arn
-  task_role_arn            = var.task_role_arn
+  requires_compatibilities = [var.launch_type]
+  network_mode = "awsvpc"
+  cpu = var.container_cpu
+  memory = var.container_memory
+  container_definitions    = jsonencode([
+    {
+      name       = var.container_name
+      image      = var.container_image
+      cpu        = var.container_cpu
+      memory     = var.container_memory
+      portMappings = [
+        {
+          containerPort = var.container_port
+          hostPort      = var.container_port
+        }
+      ]
+    }
+  ])
   tags                     = var.tags
 }
 
+#Default VPC
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default_vpc_subnets" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
 # ECS Service
-resource "aws_ecs_service" "this" {
+resource "aws_ecs_service" "service" {
   name            = var.service_name
-  cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.this.arn
+  cluster         = aws_ecs_cluster.cluster.arn
+  task_definition = aws_ecs_task_definition.task_definition.arn
   desired_count   = var.desired_count
   launch_type     = var.launch_type
 
-  deployment_controller {
-    type = var.deployment_controller_type
-  }
-
-  dynamic "network_configuration" {
-    for_each = var.network_configuration != null ? [1] : []
-    content {
-      subnets         = var.network_configuration.subnets
-      security_groups = var.network_configuration.security_groups
-      assign_public_ip = var.network_configuration.assign_public_ip
-    }
+  network_configuration {
+    subnets = data.aws_subnets.default_vpc_subnets.ids
+    security_groups = [var.security_group]
+    assign_public_ip = true
   }
 
   load_balancer {

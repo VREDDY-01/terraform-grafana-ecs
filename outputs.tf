@@ -1,4 +1,5 @@
-output "security_group_id" {
-  description = "The ID of the security group"
-  value       = module.security_group.security_group_id
+output "load_balancer" {
+  description = "The dns of the load balancer"
+  value       = "http://${module.load_balancer.lb_dns}"
 }
+
